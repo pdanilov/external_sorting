@@ -35,6 +35,7 @@ def write_lines_to_file(
 
         for line in mapping:
             file.write(line + '\n')
+
     file.seek(0)
 
 

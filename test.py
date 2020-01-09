@@ -4,7 +4,7 @@ import unittest
 
 from generate import write_lines_to_file
 from sort import external_merge_sort
-from utils import read_lines_lazy, remove_temporary
+from utils import read_lines_lazy
 
 
 class TestSorting(unittest.TestCase):

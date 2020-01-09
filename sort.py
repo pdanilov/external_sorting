@@ -34,7 +34,7 @@ def split_file_into_sorted_chunks(file: TextIO, chunk_size: int) -> SourceFileSt
     files = []
     lines = []
 
-    idx = 0
+    idx = -1
     for idx, line in enumerate(read_lines_lazy(file)):
         lines.append(line)
         if len(lines) == chunk_size:
