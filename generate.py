@@ -5,10 +5,7 @@ import random
 import string
 from typing import Optional, TextIO
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    pass
+from tqdm import tqdm
 
 
 def random_string(length: int, chars: str) -> str:
@@ -25,15 +22,11 @@ def write_lines_to_file(
 ):
     random_string_closure = partial(random_string, chars=chars)
     line_lens = map(lambda _: random.randint(1, max_length), range(num_lines))
+
     with mp.Pool(n_jobs) as pool:
         mapping = pool.imap_unordered(random_string_closure, line_lens)
 
-        try:
-            mapping = tqdm(mapping, total=num_lines)
-        except NameError:
-            pass
-
-        for line in mapping:
+        for line in tqdm(mapping, total=num_lines):
             file.write(line + '\n')
 
     file.seek(0)

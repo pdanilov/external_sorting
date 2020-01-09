@@ -4,10 +4,7 @@ from queue import PriorityQueue
 from tempfile import NamedTemporaryFile
 from typing import Any, List, TextIO
 
-try:
-    from tqdm import tqdm
-except ImportError:
-    pass
+from tqdm import tqdm
 
 from utils import read_lines_lazy, write_with_sep, remove_temporary
 
@@ -33,9 +30,9 @@ def write_lines_to_temporary(lines: List[str]) -> TextIO:
 def split_file_into_sorted_chunks(file: TextIO, chunk_size: int) -> SourceFileStats:
     files = []
     lines = []
-
     idx = -1
-    for idx, line in enumerate(read_lines_lazy(file)):
+
+    for idx, line in tqdm(enumerate(read_lines_lazy(file))):
         lines.append(line)
         if len(lines) == chunk_size:
             tmp_file = write_lines_to_temporary(sorted(lines))
@@ -76,13 +73,7 @@ def priority_queue_from_chunk_files(chunk_files: List[TextIO]) -> PriorityQueue:
 
 def merge(file: TextIO, chunk_files: List[TextIO], num_lines: int):
     queue = priority_queue_from_chunk_files(chunk_files)
-    merged = merge_by_priority_queue(queue)
-
-    try:
-        merged = tqdm(merged, total=num_lines)
-    except NameError:
-        pass
-
+    merged = tqdm(merge_by_priority_queue(queue), total=num_lines)
     write_with_sep(file, merged)
 
     for chunk_file in chunk_files:

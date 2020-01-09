@@ -4,7 +4,7 @@ potentially too big to ensure fitting into RAM
 
 Pre-requisites:
 - python >= 3.7
-- tqdm (optional, but strongly recommended, for progress-bars in both scripts)
+- tqdm
 
 Example of usage:
 ```
