@@ -1,5 +1,15 @@
+import logging
 import os
 from typing import TextIO, Iterable
+
+
+def get_logger_with_console_handler(name: str, level: int = logging.INFO) -> logging.Logger:
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    logger.addHandler(ch)
+    return logger
 
 
 def read_lines_lazy(file: TextIO):

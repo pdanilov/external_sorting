@@ -6,7 +6,9 @@ from typing import Any, List, TextIO
 
 from tqdm import tqdm
 
-from utils import read_lines_lazy, write_with_sep, remove_temporary
+from utils import get_logger_with_console_handler, read_lines_lazy, write_with_sep, remove_temporary
+
+logger = get_logger_with_console_handler(__name__)
 
 
 @dataclass(order=True)
@@ -31,6 +33,8 @@ def split_file_into_sorted_chunks(file: TextIO, chunk_size: int) -> SourceFileSt
     files = []
     lines = []
     idx = -1
+
+    logger.info("Reading input file, splitting into chunks, that fit into RAM, sorting, then writing on disk.")
 
     for idx, line in tqdm(enumerate(read_lines_lazy(file))):
         lines.append(line)
@@ -73,7 +77,9 @@ def priority_queue_from_chunk_files(chunk_files: List[TextIO]) -> PriorityQueue:
 
 def merge(file: TextIO, chunk_files: List[TextIO], num_lines: int):
     queue = priority_queue_from_chunk_files(chunk_files)
-    merged = tqdm(merge_by_priority_queue(queue), total=num_lines)
+    merged = merge_by_priority_queue(queue)
+    logger.info("Merging chunks into one file.")
+    merged = tqdm(merged, total=num_lines)
     write_with_sep(file, merged)
 
     for chunk_file in chunk_files:

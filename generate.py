@@ -7,6 +7,10 @@ from typing import Optional, TextIO
 
 from tqdm import tqdm
 
+from utils import get_logger_with_console_handler
+
+logger = get_logger_with_console_handler(__name__)
+
 
 def random_string(length: int, chars: str) -> str:
     line = ''.join([random.choice(chars) for _ in range(length)])
@@ -25,6 +29,8 @@ def write_lines_to_file(
 
     with mp.Pool(n_jobs) as pool:
         mapping = pool.imap_unordered(random_string_closure, line_lens)
+
+        logger.info("Generating data.")
 
         for line in tqdm(mapping, total=num_lines):
             file.write(line + '\n')
