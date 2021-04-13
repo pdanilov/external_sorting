@@ -1,137 +1,106 @@
 from argparse import ArgumentParser
-from dataclasses import dataclass, field
-from queue import PriorityQueue
-from tempfile import NamedTemporaryFile
-from typing import Any, List, TextIO
+from itertools import accumulate
+import math
+import shutil
+from tempfile import TemporaryFile
+from typing import IO, List, Tuple
 
-from tqdm import tqdm
-
-from utils import get_logger_with_console_handler, read_lines_lazy, write_with_sep, remove_temporary
-
-logger = get_logger_with_console_handler(__name__)
+from tqdm import trange
 
 
-@dataclass(order=True)
-class PriorityQueueItem:
-    line: str
-    it: Any = field(compare=False)
+def swap_files(in_file: IO, out_file: IO) -> Tuple[IO, IO]:
+    in_file.seek(0)
+    out_file.seek(0)
+    in_file.truncate(0)
+    return out_file, in_file
 
 
-@dataclass
-class SourceFileStats:
-    files: List[TextIO]
-    num_lines: int
+def merge_sort(in_file: IO[str], out_file: IO[str]):
+    in_file_tmp = TemporaryFile(mode='w+')
+    out_file_tmp = TemporaryFile(mode='w+')
+
+    in_file.seek(0)
+    shutil.copyfileobj(in_file, in_file_tmp)
+    in_file_tmp.seek(0)
+    num_lines = sum(1 for _ in in_file_tmp)
+
+    max_pow = int(math.log(num_lines, 2))
+    width = 1
+    for _ in trange(0, max_pow+1):
+        in_file_tmp.seek(0)
+        offsets = [len(line) for line in in_file_tmp]
+        offsets.insert(0, 0)
+        offsets = [*accumulate(offsets)]
+        for i in range(0, num_lines, 2*width):
+            lhs_start_idx = i
+            rhs_start_idx = min(i+width, num_lines)
+            end_idx = min(i+2*width, num_lines)
+            bottom_up_merge(
+                in_file_tmp,
+                out_file_tmp,
+                offsets,
+                lhs_start_idx,
+                rhs_start_idx,
+                end_idx,
+            )
+        in_file_tmp, out_file_tmp = swap_files(in_file_tmp, out_file_tmp)
+        width *= 2
+
+    shutil.copyfileobj(in_file_tmp, out_file)
+    in_file_tmp.close()
+    out_file_tmp.close()
 
 
-def write_lines_to_temporary(lines: List[str]) -> TextIO:
-    file = NamedTemporaryFile(delete=False, mode='w+')
-    write_with_sep(file, lines)
-    return file
+def bottom_up_merge(
+    in_file: IO[str],
+    out_file: IO[str],
+    offsets: List[int],
+    lhs_start_idx: int,
+    rhs_start_idx: int,
+    end_idx: int,
+):
+    lhs_idx, rhs_idx = lhs_start_idx, rhs_start_idx
+    in_file.seek(offsets[lhs_idx])
+    lhs_line = in_file.readline()
+    in_file.seek(offsets[rhs_idx])
+    rhs_line = in_file.readline()
 
+    for out_idx in range(lhs_start_idx, end_idx):
+        lhs_is_available = lhs_idx < rhs_start_idx
+        rhs_is_available = rhs_idx < end_idx
+        lhs_lt_rhs = lhs_line < rhs_line
 
-def split_file_into_sorted_chunks(file: TextIO, chunk_size: int) -> SourceFileStats:
-    files = []
-    lines = []
-    idx = -1
-
-    logger.info("Reading input file, splitting into chunks, that fit into RAM, sorting, then writing on disk.")
-
-    for idx, line in tqdm(enumerate(read_lines_lazy(file))):
-        lines.append(line)
-        if len(lines) == chunk_size:
-            tmp_file = write_lines_to_temporary(sorted(lines))
-            files.append(tmp_file)
-            lines = []
-
-    if len(lines) > 0:
-        tmp_file = write_lines_to_temporary(sorted(lines))
-        files.append(tmp_file)
-
-    return SourceFileStats(files, idx+1)
-
-
-def merge_by_priority_queue(queue: PriorityQueue) -> TextIO:
-    while not queue.empty():
-        item = queue.get_nowait()
-        line, it = item.line, item.it
-        yield line
-
-        try:
-            line = next(it)
-        except StopIteration:
-            continue
+        if lhs_is_available and (not rhs_is_available or lhs_lt_rhs):
+            out_line = lhs_line
+            lhs_idx += 1
+            in_file.seek(offsets[lhs_idx])
+            lhs_line = in_file.readline()
         else:
-            item = PriorityQueueItem(line, it)
-            queue.put_nowait(item)
+            out_line = rhs_line
+            rhs_idx += 1
+            in_file.seek(offsets[rhs_idx])
+            rhs_line = in_file.readline()
+
+        out_file.write(out_line)
 
 
-def priority_queue_from_chunk_files(chunk_files: List[TextIO]) -> PriorityQueue:
-    queue = PriorityQueue()
-    for file in chunk_files:
-        it = read_lines_lazy(file)
-        line = next(it)
-        item = PriorityQueueItem(line, it)
-        queue.put_nowait(item)
-    return queue
-
-
-def merge(file: TextIO, chunk_files: List[TextIO], num_lines: int):
-    queue = priority_queue_from_chunk_files(chunk_files)
-    merged = merge_by_priority_queue(queue)
-    logger.info("Merging chunks into one file.")
-    merged = tqdm(merged, total=num_lines)
-    write_with_sep(file, merged)
-
-    for chunk_file in chunk_files:
-        remove_temporary(chunk_file)
-
-
-def external_merge_sort(file: TextIO, dst_file: TextIO, max_length: int, available_memory: int):
-    # the size of every string is (49 + len) bytes, generated strings are not all with len == 'max_length'
-    # so asymptotically number of strings that may be load into RAM is equal to 'available_memory' / 'max_length'
-    chunk_size = available_memory // max_length
-    stats = split_file_into_sorted_chunks(file, chunk_size)
-    merge(dst_file, stats.files, stats.num_lines)
-
-
-def _parse_args():
+def parse_args():
     parser = ArgumentParser()
-    parser.add_argument('--file', type=str, required=True,
-                        help='source file')
-    parser.add_argument('--dst_file', type=str, required=True,
-                        help='destination file with sorted data')
-    parser.add_argument('--max_length', type=int, required=True,
-                        help='maximal length of line in source file')
-    parser.add_argument('--ram_capacity', type=str, default='4G',
-                        help='amount RAM used for algorithm')
+    parser.add_argument('in_file', type=str,
+                        help='input file')
+    parser.add_argument('out_file', type=str,
+                        help='output file with sorted data')
     return parser.parse_args()
 
 
-def _parse_memory_str(memory_str: str) -> int:
-    vol, unit = float(memory_str[:-1]), memory_str[-1].upper()
-
-    if unit == 'B':
-        shift = 0
-    elif unit == 'K':
-        shift = 10
-    elif unit == 'M':
-        shift = 20
-    elif unit == 'G':
-        shift = 30
-    else:
-        raise ValueError("Unrecognized unit identifier: '{}', must be 'B', 'K', 'M' or 'G'".format(unit))
-
-    vol *= (1 << shift)
-    return int(vol)
-
-
 def main():
-    args = _parse_args()
-    available_memory = _parse_memory_str(args.ram_capacity)
+    args = parse_args()
 
-    with open(args.file, mode='r') as file:
-        with open(args.dst_file, mode='w') as dst_file:
-            external_merge_sort(file, dst_file, args.max_length, available_memory)
+    in_file = open(args.in_file, mode='r')
+    out_file = open(args.out_file, mode='w')
+    merge_sort(in_file, out_file)
+    in_file.close()
+    out_file.close()
 
 
 if __name__ == '__main__':
