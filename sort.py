@@ -3,7 +3,7 @@ from itertools import accumulate
 import math
 import shutil
 from tempfile import TemporaryFile
-from typing import IO, List, Tuple
+from typing import IO, List, Optional, Tuple
 
 from tqdm import trange
 
@@ -15,7 +15,11 @@ def swap_files(in_file: IO, out_file: IO) -> Tuple[IO, IO]:
     return out_file, in_file
 
 
-def merge_sort(in_file: IO[str], out_file: IO[str]):
+def merge_sort(
+    in_file: IO[str],
+    out_file: IO[str],
+    use_tqdm: Optional[bool] = True,
+):
     in_file_tmp = TemporaryFile(mode='w+')
     out_file_tmp = TemporaryFile(mode='w+')
 
@@ -26,7 +30,8 @@ def merge_sort(in_file: IO[str], out_file: IO[str]):
 
     max_pow = int(math.log(num_lines, 2))
     width = 1
-    for _ in trange(0, max_pow+1):
+    iterable = trange(max_pow+1) if use_tqdm else range(max_pow+1)
+    for _ in iterable:
         in_file_tmp.seek(0)
         offsets = [len(line) for line in in_file_tmp]
         offsets.insert(0, 0)
@@ -90,15 +95,16 @@ def parse_args():
                         help='input file')
     parser.add_argument('out_file', type=str,
                         help='output file with sorted data')
+    parser.add_argument('--no-tqdm', dest='use_tqdm', action='store_false',
+                        help='don\'t use tqdm')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-
     in_file = open(args.in_file, mode='r')
     out_file = open(args.out_file, mode='w')
-    merge_sort(in_file, out_file)
+    merge_sort(in_file, out_file, use_tqdm=args.use_tqdm)
     in_file.close()
     out_file.close()
 

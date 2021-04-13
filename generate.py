@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 from functools import partial
-import multiprocessing as mp
+from multiprocessing.pool import ThreadPool
 import random
 import string
 from typing import IO, Optional
@@ -19,6 +19,7 @@ def write_lines_to_file(
     max_length: int,
     chars: Optional[str] = None,
     n_jobs: Optional[int] = None,
+    use_tqdm: Optional[bool] = True,
 ):
     if not chars:
         chars = string.printable
@@ -31,9 +32,11 @@ def write_lines_to_file(
     random_string_closure = partial(random_string, chars=chars)
     line_lens = map(lambda _: random.randint(1, max_length), range(num_lines))
 
-    with mp.Pool(n_jobs) as pool:
+    with ThreadPool(n_jobs) as pool:
         mapping = pool.imap_unordered(random_string_closure, line_lens)
-        for line in tqdm(mapping, total=num_lines):
+        if use_tqdm:
+            mapping = tqdm(mapping, total=num_lines)
+        for line in mapping:
             file.write(line + '\n')
 
 
@@ -70,6 +73,10 @@ def parse_args():
         '--n_jobs', type=int, default=None,
         help='number of CPUs used, omit this one to use all CPU cores',
     )
+    parser.add_argument(
+        '--no-tqdm', dest='use_tqdm', action='store_false',
+        help='don\'t use tqdm',
+    )
     return parser.parse_args()
 
 
@@ -81,8 +88,9 @@ def main():
             file,
             args.num_lines,
             args.max_length,
-            chars,
+            chars=chars,
             n_jobs=args.n_jobs,
+            use_tqdm=args.use_tqdm,
         )
 
 
