@@ -1,24 +1,24 @@
 from argparse import ArgumentParser
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
-from multiprocessing.pool import ThreadPool
 import random
 import string
-from typing import IO, Optional
+from typing import IO, List, Optional
 
 from tqdm import tqdm
 
 
-def random_string(length: int, chars: str) -> str:
-    line = ''.join(random.choice(chars) for _ in range(length))
+def random_string(length: int, *, chars: List[bytes]) -> bytes:
+    line = b''.join(random.choices(chars, k=length))
     return line
 
 
 def write_lines_to_file(
-    file: IO[str],
+    file: IO,
     num_lines: int,
     max_length: int,
     chars: Optional[str] = None,
-    n_jobs: Optional[int] = None,
+    workers: Optional[int] = None,
     use_tqdm: Optional[bool] = True,
 ):
     if not chars:
@@ -29,15 +29,19 @@ def write_lines_to_file(
             continue
         chars = chars.replace(char, '')
 
-    random_string_closure = partial(random_string, chars=chars)
-    line_lens = map(lambda _: random.randint(1, max_length), range(num_lines))
+    chars = [char.encode() for char in chars]
+    line_lens = random.choices([*range(1, max_length+1)], k=num_lines)
 
-    with ThreadPool(n_jobs) as pool:
-        mapping = pool.imap_unordered(random_string_closure, line_lens)
+    with ProcessPoolExecutor(workers) as executor:
+        mapping = executor.map(partial(random_string, chars=chars),
+                               line_lens,
+                               chunksize=100)
         if use_tqdm:
             mapping = tqdm(mapping, total=num_lines)
+
         for line in mapping:
-            file.write(line + '\n')
+            file.write(line)
+            file.write(b'\n')
 
 
 def parse_args():
@@ -47,12 +51,12 @@ def parse_args():
         help='destination file path to write',
     )
     parser.add_argument(
-        '--num_lines', type=int, required=True,
+        '--num-lines', type=int, required=True,
         help='number of lines in generated file',
     )
     parser.add_argument(
-        '--max_length', type=int, required=True,
-        help='maximal length of line',
+        '--max-length', type=int, required=True,
+        help='max length of lines',
     )
     parser.add_argument(
         '--charset', type=str,
@@ -70,8 +74,8 @@ def parse_args():
         help='alphabet of characters to use',
     )
     parser.add_argument(
-        '--n_jobs', type=int, default=None,
-        help='number of CPUs used, omit this one to use all CPU cores',
+        '--workers', type=int, default=None,
+        help='number of workers used, omit this one to use all CPU cores',
     )
     parser.add_argument(
         '--no-tqdm', dest='use_tqdm', action='store_false',
@@ -83,13 +87,13 @@ def parse_args():
 def main():
     args = parse_args()
     chars = getattr(string, args.charset) if args.charset else args.charset
-    with open(args.path, mode='w') as file:
+    with open(args.path, mode='wb') as file:
         write_lines_to_file(
             file,
             args.num_lines,
             args.max_length,
             chars=chars,
-            n_jobs=args.n_jobs,
+            workers=args.workers,
             use_tqdm=args.use_tqdm,
         )
 

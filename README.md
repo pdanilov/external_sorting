@@ -8,6 +8,6 @@ Pre-requisites:
 
 Example of usage:
 ```
-python generate.py 1KK.txt --num_lines 1000000 --max_length 1000
+python generate.py 1KK.txt --num-lines 1000000 --max-length 1000
 python sort.py 1KK.txt 1KK_sorted.txt
 ```
